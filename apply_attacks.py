@@ -28,7 +28,7 @@ def main(args):
     classifier = TensorFlowV2Classifier(
         model=keras_model,
         nb_classes=7,
-        input_shape=(48, 48, 1),
+        input_shape=(64, 64, 1),
         loss_object=loss_object,
         clip_values=(0.0, 1.0)
     )
