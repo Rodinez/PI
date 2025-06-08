@@ -12,7 +12,7 @@ from cleverhans.tf2.attacks.projected_gradient_descent import projected_gradient
 import foolbox as fb
 
 def save_adv_tensor(tensor, out_path):
-    adv_np = tensor.squeeze()
+    adv_np = tf.squeeze(tensor)
     if isinstance(adv_np, tf.Tensor):
         adv_np = adv_np.numpy()
     adv_img = np.clip(adv_np * 255, 0, 255).astype(np.uint8)
@@ -36,8 +36,8 @@ def main(args):
     fmodel = fb.TensorFlowModel(keras_model, bounds=(0, 1))
 
     dataset_paths = {
-        'FER': 'Datasets/FER-2013/train/',
-        'RAF': 'Datasets/RAF-DB/DATASET/train/'
+        'FER': 'Datasets/FER-2013/test/',
+        'RAF': 'Datasets/RAF-DB/DATASET/test/'
     }
 
     fer_label_map = {
@@ -110,12 +110,14 @@ def main(args):
                 # CleverHans
                 x_tf = tf.convert_to_tensor(x)
 
+                # CleverHans FGSM
                 adv = fast_gradient_method(keras_model, x_tf, eps=eps, norm=np.inf, targeted=False)
                 adv_np = adv.numpy()
                 out_dir = f'attacked_datasets/cleverhans_FGSM_{args.epsilon}/{dataset}'
                 os.makedirs(out_dir, exist_ok=True)
                 save_adv_tensor(adv_np, os.path.join(out_dir, img_name))
 
+                # CleverHans PGD
                 adv = projected_gradient_descent(keras_model, x_tf, eps=eps, eps_iter=min(eps, 1/255), nb_iter=40, norm=np.inf, targeted=False)
                 adv_np = adv.numpy()
                 out_dir = f'attacked_datasets/cleverhans_PGD_{args.epsilon}/{dataset}'
@@ -125,25 +127,25 @@ def main(args):
                 # Foolbox
                 x_tf = tf.convert_to_tensor(x, dtype=tf.float32)
                 y_fb_tf = tf.convert_to_tensor([label_idx], dtype=tf.int32)
-                
-                x_np = x_tf.numpy()
-                y_np = y_fb_tf.numpy()
 
+                # Foolbox FGSM
                 atk = fb.attacks.FGSM()
-                _, clipped_adv, _ = atk(fmodel, x_np, y_np, epsilons=eps)
+                _, clipped_adv, _ = atk(fmodel, x_tf, y_fb_tf, epsilons=eps)
                 out_dir = f'attacked_datasets/foolbox_FGSM_{args.epsilon}/{dataset}'
                 os.makedirs(out_dir, exist_ok=True)
                 save_adv_tensor(clipped_adv, os.path.join(out_dir, img_name))
 
+                # Foolbox PGD
                 atk = fb.attacks.LinfPGD(steps=40)
-                _, clipped_adv, _ = atk(fmodel, x_np, y_np, epsilons=eps)
+                _, clipped_adv, _ = atk(fmodel, x_tf, y_fb_tf, epsilons=eps)
                 out_dir = f'attacked_datasets/foolbox_PGD_{args.epsilon}/{dataset}'
                 os.makedirs(out_dir, exist_ok=True)
                 save_adv_tensor(clipped_adv, os.path.join(out_dir, img_name))
 
-                atk = fb.attacks.AutoAttack()
-                _, clipped_adv, _ = atk(fmodel, x_np, y_np, epsilons=eps)
-                out_dir = f'attacked_datasets/foolbox_AutoAttack_{args.epsilon}/{dataset}'
+                # Foolbox Deepfool
+                atk = fb.attacks.deepfool.L2DeepFoolAttack(steps=50)
+                _, clipped_adv, _ = atk(fmodel, x_tf, y_fb_tf, epsilons=eps)
+                out_dir = f'attacked_datasets/foolbox_Deepfool_{args.epsilon}/{dataset}'
                 os.makedirs(out_dir, exist_ok=True)
                 save_adv_tensor(clipped_adv, os.path.join(out_dir, img_name))
 
