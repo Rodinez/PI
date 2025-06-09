@@ -55,7 +55,7 @@ def main(args):
         with open('Datasets/RAF-DB/test_labels.csv', newline='') as csvfile:
             reader = csv.DictReader(csvfile)
             for row in reader:
-                raf_labels[row['image']] = int(row['label'])
+                raf_labels[row['image']] = int(row['label']) - 1
 
     datasets_to_use = ['FER', 'RAF'] if args.dataset == 'both' else [args.dataset]
 
