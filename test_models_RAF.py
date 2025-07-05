@@ -98,8 +98,7 @@ def main():
 
             total += 1
 
-    print("\nResultados finais:")
-    print("Total imagens avaliadas:", total)
+    print("Total images:", total)
     print(f"FER accuracy:           {correct_fer / total * 100:.2f}%")
     print(f"DeepFace accuracy:      {correct_df / total * 100:.2f}%")
     print(f"mini_XCEPTION accuracy: {correct_xcp / total * 100:.2f}%")
