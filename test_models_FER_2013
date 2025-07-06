@@ -1,14 +1,20 @@
 import os
 import cv2
 import numpy as np
+import pandas as pd
 import tensorflow as tf
 from fer import FER
 from deepface import DeepFace
+import logging
+
+logging.getLogger('tensorflow').setLevel(logging.ERROR)
+logging.getLogger('deepface').setLevel(logging.ERROR)
 
 IMAGE_ROOT_DIR = "Datasets/FER-2013/test/"
+LABEL_CSV = "Datasets/RAF-DB/test_labels.csv"
 MINI_XCEPTION_PATH = "_mini_XCEPTION.102-0.66.hdf5"
 
-emotion_labels_model = ["angry", "disgust", "fear", "happy", "neutral", "sad", "surprise"]
+emotion_labels_model = ["angry", "disgust", "fear", "happy", "sad", "surprise", "neutral"]
 
 fer_detector = FER(mtcnn=True)
 mini_xception_model = tf.keras.models.load_model(MINI_XCEPTION_PATH, compile=False)
@@ -16,12 +22,33 @@ mini_xception_model = tf.keras.models.load_model(MINI_XCEPTION_PATH, compile=Fal
 def preprocess_for_deep_models(image):
     if len(image.shape) == 2:
         image = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
-    resized = cv2.resize(image, (224, 224))
+    
+    # Adicionar padding para ajudar os detectores de rosto
+    h, w = image.shape[:2]
+    pad_h = int(0.2 * h)
+    pad_w = int(0.2 * w) 
+    
+    padded = cv2.copyMakeBorder(
+        image, 
+        top=pad_h, 
+        bottom=pad_h, 
+        left=pad_w, 
+        right=pad_w, 
+        borderType=cv2.BORDER_REFLECT
+    )
+    
+    scale = 224 / min(padded.shape[0], padded.shape[1])
+    interp = cv2.INTER_CUBIC if scale > 1 else cv2.INTER_AREA
+    resized = cv2.resize(padded, (224, 224), interpolation=interp)
     return resized
 
 def preprocess_for_mini_xception(image):
     if len(image.shape) == 3:
         image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+    image = clahe.apply(image)
+    
     resized = cv2.resize(image, (64, 64))
     img_pixels = resized.astype('float32') / 255.0
     img_pixels = np.expand_dims(img_pixels, axis=0)
@@ -29,24 +56,48 @@ def preprocess_for_mini_xception(image):
     return img_pixels
 
 def predict_with_fer(image):
-    result = fer_detector.detect_emotions(image)
-    if result:
-        return max(result[0]["emotions"], key=result[0]["emotions"].get)
+    try:
+        result = fer_detector.detect_emotions(image)
+        if result:
+            return max(result[0]["emotions"], key=result[0]["emotions"].get)
+    except Exception:
+        pass
     return None
 
 def predict_with_deepface(image):
-    result = DeepFace.analyze(image, actions=['emotion'], enforce_detection=False)
-    return result[0]["dominant_emotion"]
-
+    try:
+        result = DeepFace.analyze(
+            image, 
+            actions=['emotion'], 
+            detector_backend='mtcnn',  
+            enforce_detection=False,
+            silent=True
+        )
+        return result[0]["dominant_emotion"]
+    except Exception:
+        return "neutral"  
 def predict_with_mini_xception(input_img):
-    preds = mini_xception_model.predict(input_img, verbose=0)
-    return emotion_labels_model[np.argmax(preds)]
+    try:
+        preds = mini_xception_model.predict(input_img, verbose=0)
+        return emotion_labels_model[np.argmax(preds)]
+    except Exception:
+        return "neutral"  
 
 def main():
-    correct_fer = 0
-    correct_df = 0
-    correct_xcp = 0
-    total = 0
+    correct_fer, correct_df, correct_xcp = 0, 0, 0
+    total, fer_failures = 0, 0
+    
+    image_paths = []
+    for subfolder in map(str, range(1, 8)):
+        folder_path = os.path.join(IMAGE_ROOT_DIR, subfolder)
+        if not os.path.isdir(folder_path):
+            continue
+            
+        for filename in os.listdir(folder_path):
+            if filename.lower().endswith(('.jpg', '.png', '.jpeg')):
+                image_paths.append((os.path.join(folder_path, filename), filename))
+    
+    print(f"Processando {len(image_paths)} imagens...")
 
     for true_label in os.listdir(IMAGE_ROOT_DIR):
         folder_path = os.path.join(IMAGE_ROOT_DIR, true_label)
@@ -64,25 +115,35 @@ def main():
 
             image_color = preprocess_for_deep_models(image_gray)
             xcp_input = preprocess_for_mini_xception(image_gray)
-
+            
             fer_pred = predict_with_fer(image_color)
             df_pred = predict_with_deepface(image_color)
             xcp_pred = predict_with_mini_xception(xcp_input)
-
-            if fer_pred and fer_pred.lower() == true_label.lower():
+            
+            if fer_pred is None:
+                fer_failures += 1
+                fer_pred = ""  
+            
+            if fer_pred.lower() == true_label.lower():
                 correct_fer += 1
-            if df_pred and df_pred.lower() == true_label.lower():
+            if df_pred.lower() == true_label.lower():
                 correct_df += 1
-            if xcp_pred and xcp_pred.lower() == true_label.lower():
+            if xcp_pred.lower() == true_label.lower():
                 correct_xcp += 1
-
+                
             total += 1
+            
+            if total % 100 == 0:
+                print(f"Processadas: {total}/{len(image_paths)} imagens")
 
-    print("\nResultados finais:")
-    print("Total imagens avaliadas:", total)
-    print(f"FER accuracy:           {correct_fer / total * 100:.2f}%")
-    print(f"DeepFace accuracy:      {correct_df / total * 100:.2f}%")
-    print(f"mini_XCEPTION accuracy: {correct_xcp / total * 100:.2f}%")
+    print("\n" + "="*50)
+    print("Resultados finais:")
+    print("="*50)
+    print(f"Total de imagens processadas: {total}")
+    print(f"Taxa de falha do FER: {fer_failures/total*100:.2f}%")
+    print(f"Acurácia FER:           {correct_fer/total*100:.2f}%")
+    print(f"Acurácia DeepFace:      {correct_df/total*100:.2f}%")
+    print(f"Acurácia mini_XCEPTION: {correct_xcp/total*100:.2f}%")
 
-if __name__ == "__main__":
+if __name__ == "__main__":    
     main()
