@@ -37,7 +37,7 @@ def preprocess_for_mini_xception(image):
     if len(image.shape) == 3:
         image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
-    resized = cv2.resize(image, (64, 64), interpolation=cv2.INTER_AREA)
+    resized = cv2.resize(image, (64, 64))
     img_pixels = preprocess_input(resized)
     img_pixels = np.expand_dims(img_pixels, axis=0)
     img_pixels = np.expand_dims(img_pixels, axis=-1)
