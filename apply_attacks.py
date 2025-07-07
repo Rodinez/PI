@@ -18,6 +18,11 @@ def save_adv_tensor(tensor, out_path):
     adv_img = np.clip(adv_np * 255, 0, 255).astype(np.uint8)
     cv2.imwrite(out_path, adv_img)
 
+def save_with_label_dir(base_out_dir, dataset, label_name, img_name, adv_tensor):
+    out_dir = os.path.join(base_out_dir, dataset, label_name if label_name else "")
+    os.makedirs(out_dir, exist_ok=True)
+    save_adv_tensor(adv_tensor, os.path.join(out_dir, img_name))
+
 def main(args):
     eps = args.epsilon / 255.0
 
@@ -79,6 +84,7 @@ def main(args):
                 img_np = np.asarray(img, dtype=np.float32) / 255.0
                 x = np.expand_dims(img_np, axis=(0, -1))
 
+                label_name = None
                 if dataset == 'FER':
                     label_name = os.path.basename(os.path.dirname(img_path)).lower()
                     label_idx = fer_label_map.get(label_name)
@@ -91,63 +97,42 @@ def main(args):
                         print(f"Label not found for RAF image {img_name}")
                         continue
 
-                # ART
                 y_onehot = np.zeros((1, 7))
                 y_onehot[0, label_idx] = 1.0
 
                 # ART FGSM
                 adv = FastGradientMethod(estimator=classifier, eps=eps).generate(x=x, y=y_onehot)
-                out_dir = f'attacked_datasets/art_FGSM_{args.epsilon}/{dataset}'
-                os.makedirs(out_dir, exist_ok=True)
-                save_adv_tensor(adv[0], os.path.join(out_dir, img_name))
+                save_with_label_dir(f'attacked_datasets/art_FGSM_{args.epsilon}', dataset, label_name, img_name, adv[0])
 
                 # ART PGD
                 adv = ProjectedGradientDescent(estimator=classifier, eps=eps, eps_step=2/255, max_iter=40).generate(x=x, y=y_onehot)
-                out_dir = f'attacked_datasets/art_PGD_{args.epsilon}/{dataset}'
-                os.makedirs(out_dir, exist_ok=True)
-                save_adv_tensor(adv[0], os.path.join(out_dir, img_name))
-
-                # CleverHans
-                x_tf = tf.convert_to_tensor(x)
+                save_with_label_dir(f'attacked_datasets/art_PGD_{args.epsilon}', dataset, label_name, img_name, adv[0])
 
                 # CleverHans FGSM
+                x_tf = tf.convert_to_tensor(x)
                 adv = fast_gradient_method(keras_model, x_tf, eps=eps, norm=np.inf, targeted=False)
-                adv_np = adv.numpy()
-                out_dir = f'attacked_datasets/cleverhans_FGSM_{args.epsilon}/{dataset}'
-                os.makedirs(out_dir, exist_ok=True)
-                save_adv_tensor(adv_np, os.path.join(out_dir, img_name))
+                save_with_label_dir(f'attacked_datasets/cleverhans_FGSM_{args.epsilon}', dataset, label_name, img_name, adv.numpy())
 
                 # CleverHans PGD
                 adv = projected_gradient_descent(keras_model, x_tf, eps=eps, eps_iter=min(eps, 1/255), nb_iter=40, norm=np.inf, targeted=False)
-                adv_np = adv.numpy()
-                out_dir = f'attacked_datasets/cleverhans_PGD_{args.epsilon}/{dataset}'
-                os.makedirs(out_dir, exist_ok=True)
-                save_adv_tensor(adv_np, os.path.join(out_dir, img_name))
-
-                # Foolbox
-                x_tf = tf.convert_to_tensor(x, dtype=tf.float32)
-                y_fb_tf = tf.convert_to_tensor([label_idx], dtype=tf.int32)
+                save_with_label_dir(f'attacked_datasets/cleverhans_PGD_{args.epsilon}', dataset, label_name, img_name, adv.numpy())
 
                 # Foolbox FGSM
+                x_tf = tf.convert_to_tensor(x, dtype=tf.float32)
+                y_fb_tf = tf.convert_to_tensor([label_idx], dtype=tf.int32)
                 atk = fb.attacks.FGSM()
                 _, clipped_adv, _ = atk(fmodel, x_tf, y_fb_tf, epsilons=eps)
-                out_dir = f'attacked_datasets/foolbox_FGSM_{args.epsilon}/{dataset}'
-                os.makedirs(out_dir, exist_ok=True)
-                save_adv_tensor(clipped_adv, os.path.join(out_dir, img_name))
+                save_with_label_dir(f'attacked_datasets/foolbox_FGSM_{args.epsilon}', dataset, label_name, img_name, clipped_adv)
 
                 # Foolbox PGD
                 atk = fb.attacks.LinfPGD(steps=40)
                 _, clipped_adv, _ = atk(fmodel, x_tf, y_fb_tf, epsilons=eps)
-                out_dir = f'attacked_datasets/foolbox_PGD_{args.epsilon}/{dataset}'
-                os.makedirs(out_dir, exist_ok=True)
-                save_adv_tensor(clipped_adv, os.path.join(out_dir, img_name))
+                save_with_label_dir(f'attacked_datasets/foolbox_PGD_{args.epsilon}', dataset, label_name, img_name, clipped_adv)
 
                 # Foolbox Deepfool
                 atk = fb.attacks.deepfool.L2DeepFoolAttack(steps=50)
                 _, clipped_adv, _ = atk(fmodel, x_tf, y_fb_tf, epsilons=eps)
-                out_dir = f'attacked_datasets/foolbox_Deepfool_{args.epsilon}/{dataset}'
-                os.makedirs(out_dir, exist_ok=True)
-                save_adv_tensor(clipped_adv, os.path.join(out_dir, img_name))
+                save_with_label_dir(f'attacked_datasets/foolbox_Deepfool_{args.epsilon}', dataset, label_name, img_name, clipped_adv)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
