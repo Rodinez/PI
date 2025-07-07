@@ -19,11 +19,10 @@ label_to_index = {label: i for i, label in enumerate(EMOTION_LABELS)}
 
 def preprocess_input(x):
     x = x.astype('float32') / 255.0
-    x = x - 0.5
-    x = x * 2.0
+    x = (x - 0.5) * 2.0
     return x
 
-def load_fer2013_from_folders(base_path):
+def load_fer2013(base_path):
     images, labels = [], []
     for emotion in EMOTION_LABELS:
         folder = os.path.join(base_path, emotion)
@@ -50,7 +49,7 @@ def load_fer2013_from_folders(base_path):
 from cnn import mini_XCEPTION
 
 def main():
-    x_train, x_val, y_train, y_val = load_fer2013_from_folders(FER_PATH)
+    x_train, x_val, y_train, y_val = load_fer2013(FER_PATH)
 
     datagen = ImageDataGenerator(
         rotation_range=10,

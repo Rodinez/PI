@@ -27,7 +27,7 @@ def preprocess_input(x, v2=True):
         x = (x - 0.5) * 2.0
     return x
 
-def preprocess_for_mini_xception(image):
+def preprocess(image):
     if len(image.shape) == 3:
         image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     resized = cv2.resize(image, (64, 64))
@@ -36,7 +36,7 @@ def preprocess_for_mini_xception(image):
     img_pixels = np.expand_dims(img_pixels, axis=-1)
     return img_pixels
 
-def predict_with_mini_xception(input_img):
+def predict(input_img):
     preds = mini_xception_model.predict(input_img, verbose=0)
     sorted_indices = np.argsort(preds[0])[::-1]
     top2 = [emotion_labels_model[i] for i in sorted_indices[:2]]
@@ -70,8 +70,8 @@ def main():
             print(f"Label não encontrada para: {filename}")
             continue
 
-        xcp_input = preprocess_for_mini_xception(image)
-        xcp_pred, xcp_top2 = predict_with_mini_xception(xcp_input)
+        xcp_input = preprocess(image)
+        xcp_pred, xcp_top2 = predict(xcp_input)
 
         if xcp_pred.lower() == true_label.lower():
             correct_xcp += 1
