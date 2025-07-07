@@ -1,7 +1,6 @@
 import os
 import cv2
 import numpy as np
-import pandas as pd
 import tensorflow as tf
 import logging
 
@@ -9,7 +8,6 @@ logging.getLogger('tensorflow').setLevel(logging.ERROR)
 logging.getLogger('deepface').setLevel(logging.ERROR)
 
 IMAGE_ROOT_DIR = "Datasets/FER-2013/test/"
-LABEL_CSV = "Datasets/RAF-DB/test_labels.csv"
 MINI_XCEPTION_PATH = "_mini_XCEPTION.102-0.66.hdf5"
 
 emotion_labels_model = ["angry", "disgust", "fear", "happy", "sad", "surprise", "neutral"]
@@ -17,11 +15,9 @@ emotion_labels_model = ["angry", "disgust", "fear", "happy", "sad", "surprise", 
 mini_xception_model = tf.keras.models.load_model(MINI_XCEPTION_PATH, compile=False)
 
 def preprocess_input(x, v2=True):
-    x = x.astype('float32')
-    x = x / 255.0
+    x = x.astype('float32') / 255.0
     if v2:
-        x = x - 0.5
-        x = x * 2.0
+        x = (x - 0.5) * 2.0
     return x
 
 def preprocess_for_mini_xception(image):
@@ -40,22 +36,25 @@ def predict_with_mini_xception(input_img):
     top2 = [emotion_labels_model[i] for i in sorted_indices[:2]]
     return top2[0], top2
 
+def count_total_images(root_dir):
+    count = 0
+    for label_name in os.listdir(root_dir):
+        folder_path = os.path.join(root_dir, label_name)
+        if not os.path.isdir(folder_path):
+            continue
+        for filename in os.listdir(folder_path):
+            if filename.lower().endswith(('.jpg', '.png', '.jpeg')):
+                count += 1
+    return count
+
 def main():
     correct_xcp = 0
     second_xcp = 0
     total = 0
-    
-    image_paths = []
-    for subfolder in map(str, range(1, 8)):
-        folder_path = os.path.join(IMAGE_ROOT_DIR, subfolder)
-        if not os.path.isdir(folder_path):
-            continue
-            
-        for filename in os.listdir(folder_path):
-            if filename.lower().endswith(('.jpg', '.png', '.jpeg')):
-                image_paths.append((os.path.join(folder_path, filename), filename))
-    
-    print(f"Processando {len(image_paths)} imagens...")
+
+    total_expected = count_total_images(IMAGE_ROOT_DIR)
+    print(f"Total de imagens encontradas: {total_expected}")
+    print("Iniciando processamento...")
 
     for true_label in os.listdir(IMAGE_ROOT_DIR):
         folder_path = os.path.join(IMAGE_ROOT_DIR, true_label)
@@ -72,7 +71,6 @@ def main():
                 continue
 
             xcp_input = preprocess_for_mini_xception(image)
-
             xcp_pred, xcp_top2 = predict_with_mini_xception(xcp_input)
 
             if xcp_pred.lower() == true_label.lower():
@@ -81,9 +79,8 @@ def main():
                 second_xcp += 1
 
             total += 1
-
             if total % 100 == 0:
-                print(f"Processadas: {total}/{len(image_paths)} imagens")
+                print(f"Processadas: {total}/{total_expected} imagens")
 
     if total == 0:
         print("Nenhuma imagem foi processada com sucesso.")
@@ -95,6 +92,7 @@ def main():
     print(f"Total de imagens processadas:         {total}")
     print(f"Acurácia mini_XCEPTION (top-1):       {correct_xcp / total * 100:.2f}%")
     print(f"Top-2 correta no mini_XCEPTION:       {second_xcp / total * 100:.2f}%")
+    print(f"Acurárica Top(1-2) mini_XCEPTION:     {(correct_xcp + second_xcp) / total * 100:.2f}%")
 
 if __name__ == "__main__":
     main()

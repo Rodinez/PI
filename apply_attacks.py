@@ -19,7 +19,10 @@ def save_adv_tensor(tensor, out_path):
     cv2.imwrite(out_path, adv_img)
 
 def save_with_label_dir(base_out_dir, dataset, label_name, img_name, adv_tensor):
-    out_dir = os.path.join(base_out_dir, dataset, label_name if label_name else "")
+    if dataset == 'FER':
+        out_dir = os.path.join(base_out_dir, dataset, label_name)
+    else:
+        out_dir = os.path.join(base_out_dir, dataset)
     os.makedirs(out_dir, exist_ok=True)
     save_adv_tensor(adv_tensor, os.path.join(out_dir, img_name))
 
@@ -95,6 +98,9 @@ def main(args):
                     label_idx = raf_labels.get(img_name)
                     if label_idx is None:
                         print(f"Label not found for RAF image {img_name}")
+                        continue
+                    
+                    if label_idx != 2:
                         continue
 
                 y_onehot = np.zeros((1, 7))

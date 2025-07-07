@@ -26,11 +26,9 @@ rafdb_id_to_label = {
 mini_xception_model = tf.keras.models.load_model(MINI_XCEPTION_PATH, compile=False)
 
 def preprocess_input(x, v2=True):
-    x = x.astype('float32')
-    x = x / 255.0
+    x = x.astype('float32') / 255.0
     if v2:
-        x = x - 0.5
-        x = x * 2.0
+        x = (x - 0.5) * 2.0
     return x
 
 def preprocess_for_mini_xception(image):
@@ -103,6 +101,8 @@ def main():
     print(f"Total de imagens processadas:         {total}")
     print(f"Acurácia mini_XCEPTION (top-1):       {correct_xcp / total * 100:.2f}%")
     print(f"Top-2 correta no mini_XCEPTION:       {second_xcp / total * 100:.2f}%")
+    print(f"Acurárica Top(1-2) mini_XCEPTION:     {(correct_xcp + second_xcp) / total * 100:.2f}%")
+
 
 if __name__ == "__main__":
     main()
