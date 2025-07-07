@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import tensorflow as tf
 
-IMAGE_ROOT_DIR = "attacked_datasets/foolbox_FGSM_5.0/RAF"
+IMAGE_ROOT_DIR = "attacked_datasets/foolbox_PGD_10.0/RAF"
 LABEL_CSV = "Datasets/RAF-DB/test_labels.csv"
 MINI_XCEPTION_PATH = "_mini_XCEPTION.102-0.66.hdf5"
 
@@ -92,7 +92,7 @@ def main():
     print(f"Total de imagens processadas:         {total}")
     print(f"Acurácia mini_XCEPTION (top-1):       {correct_xcp / total * 100:.2f}%")
     print(f"Top-2 correta no mini_XCEPTION:       {second_xcp / total * 100:.2f}%")
-    print(f"Acurárica Top(1-2) mini_XCEPTION:     {(correct_xcp + second_xcp) / total * 100:.2f}%")
+    print(f"Acurácia Top(1-2) mini_XCEPTION:      {(correct_xcp + second_xcp) / total * 100:.2f}%")
 
 if __name__ == "__main__":
     main()

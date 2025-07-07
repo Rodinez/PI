@@ -92,7 +92,7 @@ def main():
     print(f"Total de imagens processadas:         {total}")
     print(f"Acurácia mini_XCEPTION (top-1):       {correct_xcp / total * 100:.2f}%")
     print(f"Top-2 correta no mini_XCEPTION:       {second_xcp / total * 100:.2f}%")
-    print(f"Acurárica Top(1-2) mini_XCEPTION:     {(correct_xcp + second_xcp) / total * 100:.2f}%")
+    print(f"Acurácia Top(1-2) mini_XCEPTION:      {(correct_xcp + second_xcp) / total * 100:.2f}%")
 
 if __name__ == "__main__":
     main()
