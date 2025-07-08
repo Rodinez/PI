@@ -1,4 +1,6 @@
-import torch
+'''
+Based on https://github.com/qingOOyuan/mini_Xception/blob/main/utils/Model.py
+'''
 import torch.nn as nn
 import torch.nn.functional as F
 
@@ -95,4 +97,4 @@ class MiniXception(nn.Module):
         x = self.final_conv(x)
         x = self.global_pool(x)
         x = x.view(x.size(0), -1)
-        return self.softmax(x)
+        return x

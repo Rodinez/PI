@@ -105,24 +105,14 @@ def main():
             x_batch = x_batch.to(DEVICE)
             y_batch = y_batch.to(DEVICE)
 
-            num_adv = x_batch.shape[0] // 4
-            x_batch_adv = attack.generate(x=x_batch[:num_adv].cpu().numpy())
-
-            x_comb = torch.cat([
-                x_batch[num_adv:], torch.tensor(x_batch_adv).to(DEVICE)
-            ])
-            y_comb = torch.cat([
-                y_batch[num_adv:], y_batch[:num_adv]
-            ])
-
             optimizer.zero_grad()
-            outputs = (model(x_comb))
-            loss = loss_fn(outputs, y_comb.long())
+            outputs = model(x_batch)
+            loss = loss_fn(outputs, y_batch.long())
             loss.backward()
             optimizer.step()
 
             total_loss += loss.item()
-            total_correct += (outputs.argmax(1) == y_comb).sum().item()
+            total_correct += (outputs.argmax(1) == y_batch).sum().item()
 
         train_acc = total_correct / len(train_dataset)
         train_loss = total_loss / len(train_loader)
@@ -135,7 +125,7 @@ def main():
                 x_batch = x_batch.to(DEVICE)
                 y_batch = y_batch.to(DEVICE)
                 outputs = model(x_batch)
-                loss = loss_fn(outputs, y_batch)
+                loss = loss_fn(outputs, y_batch.long())
                 val_loss += loss.item()
                 val_correct += (outputs.argmax(1) == y_batch).sum().item()
 
@@ -147,18 +137,12 @@ def main():
         if val_loss < best_val_loss:
             best_val_loss = val_loss
             torch.save(model.state_dict(), os.path.join(BASE_PATH, "mini_xception_adv_best.pth"))
-            print(f"Modelo salvo no epoch {epoch+1} com val_loss {val_loss:.4f}")
+            print(f"### Modelo salvo no epoch {epoch+1} com val_loss {val_loss:.4f} ###")
 
     print("\nAvaliando no conjunto limpo:")
     preds_clean = classifier.predict(x_val[:, np.newaxis, :, :])
     clean_acc = np.mean(np.argmax(preds_clean, axis=1) == y_val)
     print(f"Acurácia limpa: {clean_acc*100:.2f}%")
-
-    print("\nAvaliando com PGD adversarial:")
-    x_val_adv = attack.generate(x_val[:, np.newaxis, :, :], y_val)
-    preds_adv = classifier.predict(x_val_adv)
-    adv_acc = np.mean(np.argmax(preds_adv, axis=1) == y_val)
-    print(f"Acurácia adversarial: {adv_acc*100:.2f}%")
 
     torch.save(model.state_dict(), os.path.join(BASE_PATH, "mini_xception_adv_final.pth"))
     print(f"Modelo salvo em {BASE_PATH}")
