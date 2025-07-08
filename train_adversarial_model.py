@@ -1,26 +1,29 @@
 import os
 import numpy as np
-import tensorflow as tf
+import torch
+import torch.nn as nn
+from torch.utils.data import DataLoader, Dataset
+from torchvision import transforms
 import cv2
-from keras._tf_keras.keras.callbacks import CSVLogger
-from keras._tf_keras.keras.preprocessing.image import ImageDataGenerator
-from art.estimators.classification import TensorFlowV2Classifier
-from art.attacks.evasion import ProjectedGradientDescent
 from sklearn.model_selection import train_test_split
+from art.attacks.evasion import ProjectedGradientDescent
+from art.estimators.classification import PyTorchClassifier
+from model import MiniXception 
 
 BATCH_SIZE = 32
 NUM_EPOCHS = 100
-INPUT_SHAPE = (64, 64, 1)
 NUM_CLASSES = 7
+INPUT_SHAPE = (1, 64, 64)
+DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 BASE_PATH = './trained_models/'
 FER_PATH = 'Datasets/FER-2013/train'
 EMOTION_LABELS = ["angry", "disgust", "fear", "happy", "neutral", "sad", "surprise"]
 label_to_index = {label: i for i, label in enumerate(EMOTION_LABELS)}
 
-def preprocess_input(x):
-    x = x.astype('float32') / 255.0
-    x = (x - 0.5) * 2.0
-    return x
+def preprocess_input(img):
+    img = img.astype('float32') / 255.0
+    img = (img - 0.5) * 2.0
+    return img
 
 def load_fer2013(base_path):
     images, labels = [], []
@@ -37,107 +40,128 @@ def load_fer2013(base_path):
                 continue
             img = cv2.resize(img, (64, 64))
             img = preprocess_input(img)
-            images.append(np.expand_dims(img, axis=-1))
+            images.append(img)
             labels.append(label_to_index[emotion])
 
     images = np.array(images)
     labels = np.array(labels)
-    y = np.zeros((labels.size, NUM_CLASSES))
-    y[np.arange(labels.size), labels] = 1
-    return train_test_split(images, y, test_size=0.2, stratify=labels, random_state=42)
+    return train_test_split(images, labels, test_size=0.2, stratify=labels, random_state=42)
 
-from cnn import mini_XCEPTION
+class FERDataset(Dataset):
+    def __init__(self, images, labels, transform=None):
+        self.images = images
+        self.labels = labels
+        self.transform = transform
+
+    def __getitem__(self, idx):
+        img = self.images[idx]
+        img = np.expand_dims(img, axis=0)
+        if self.transform:
+            img = self.transform(torch.from_numpy(img).float())
+        label = self.labels[idx]
+        return img, label
+
+    def __len__(self):
+        return len(self.images)
 
 def main():
     x_train, x_val, y_train, y_val = load_fer2013(FER_PATH)
 
-    datagen = ImageDataGenerator(
-        rotation_range=10,
-        width_shift_range=0.1,
-        height_shift_range=0.1,
-        zoom_range=0.1,
-        horizontal_flip=True
-    )
-    datagen.fit(x_train)
+    train_dataset = FERDataset(x_train, y_train)
+    val_dataset = FERDataset(x_val, y_val)
 
-    model = mini_XCEPTION(INPUT_SHAPE, NUM_CLASSES)
-    model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
+    train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True)
+    val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE)
 
-    os.makedirs(BASE_PATH, exist_ok=True)
-    log_file = os.path.join(BASE_PATH, 'fer2013_adv_training.log')
-    csv_logger = CSVLogger(log_file, append=False)
+    model = MiniXception(num_classes=NUM_CLASSES).to(DEVICE)
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-3, weight_decay=1e-2)
+    loss_fn = nn.CrossEntropyLoss()
 
-    loss_object = tf.keras.losses.CategoricalCrossentropy()
-    classifier = TensorFlowV2Classifier(
+    classifier = PyTorchClassifier(
         model=model,
-        nb_classes=NUM_CLASSES,
+        loss=loss_fn,
+        optimizer=optimizer,
         input_shape=INPUT_SHAPE,
-        loss_object=loss_object,
-        clip_values=(-1.0, 1.0)
+        nb_classes=NUM_CLASSES,
+        clip_values=(-1.0, 1.0),
+        device_type="gpu" if torch.cuda.is_available() else "cpu"
     )
 
     attack = ProjectedGradientDescent(
         estimator=classifier,
-        eps=3e-2,
-        eps_step=5e-3,
+        eps=0.03,
+        eps_step=0.005,
         max_iter=40
     )
 
-    steps_per_epoch = len(x_train) // BATCH_SIZE
-    best_val_loss = np.inf
+    best_val_loss = float('inf')
+    os.makedirs(BASE_PATH, exist_ok=True)
 
     for epoch in range(NUM_EPOCHS):
-        print(f"\nEpoch {epoch+1}/{NUM_EPOCHS}")
-        gen = datagen.flow(x_train, y_train, batch_size=BATCH_SIZE, shuffle=True)
+        model.train()
+        total_loss = 0.0
+        total_correct = 0
+        for x_batch, y_batch in train_loader:
+            x_batch = x_batch.to(DEVICE)
+            y_batch = y_batch.to(DEVICE)
 
-        epoch_loss = 0.0
-        epoch_acc = 0.0
-        for step in range(steps_per_epoch):
-            x_batch, y_batch = next(gen)
+            num_adv = x_batch.shape[0] // 4
+            x_batch_adv = attack.generate(x=x_batch[:num_adv].cpu().numpy())
 
-            num_adv = BATCH_SIZE // 4
+            x_comb = torch.cat([
+                x_batch[num_adv:], torch.tensor(x_batch_adv).to(DEVICE)
+            ])
+            y_comb = torch.cat([
+                y_batch[num_adv:], y_batch[:num_adv]
+            ])
 
-            x_batch_adv = attack.generate(x_batch[:num_adv])
+            optimizer.zero_grad()
+            outputs = (model(x_comb))
+            loss = loss_fn(outputs, y_comb.long())
+            loss.backward()
+            optimizer.step()
 
-            x_combined = np.concatenate([x_batch[num_adv:], x_batch_adv], axis=0)
-            y_combined = np.concatenate([y_batch[num_adv:], y_batch[:num_adv]], axis=0)
+            total_loss += loss.item()
+            total_correct += (outputs.argmax(1) == y_comb).sum().item()
 
-            metrics = classifier._model.train_on_batch(x_combined, y_combined)
+        train_acc = total_correct / len(train_dataset)
+        train_loss = total_loss / len(train_loader)
 
-            epoch_loss += metrics[0]
-            epoch_acc += metrics[1]
+        # Avaliação
+        model.eval()
+        val_loss, val_correct = 0.0, 0
+        with torch.no_grad():
+            for x_batch, y_batch in val_loader:
+                x_batch = x_batch.to(DEVICE)
+                y_batch = y_batch.to(DEVICE)
+                outputs = model(x_batch)
+                loss = loss_fn(outputs, y_batch)
+                val_loss += loss.item()
+                val_correct += (outputs.argmax(1) == y_batch).sum().item()
 
-            if (step + 1) % 50 == 0 or (step + 1) == steps_per_epoch:
-                print(f" Step {step+1}/{steps_per_epoch} - loss: {metrics[0]:.4f} - acc: {metrics[1]:.4f}")
+        val_loss /= len(val_loader)
+        val_acc = val_correct / len(val_dataset)
 
-        epoch_loss /= steps_per_epoch
-        epoch_acc /= steps_per_epoch
-        print(f"Epoch {epoch+1} summary: loss = {epoch_loss:.4f}, accuracy = {epoch_acc:.4f}")
-
-        val_loss, val_acc = classifier._model.evaluate(x_val, y_val, verbose=0)
-        print(f" Validation - loss: {val_loss:.4f} - acc: {val_acc:.4f}")
-
-        csv_logger.on_epoch_end(epoch, {'loss': epoch_loss, 'accuracy': epoch_acc, 'val_loss': val_loss, 'val_accuracy': val_acc})
+        print(f"[Epoch {epoch+1}] Train Loss: {train_loss:.4f}, Acc: {train_acc:.4f} | Val Loss: {val_loss:.4f}, Acc: {val_acc:.4f}")
 
         if val_loss < best_val_loss:
             best_val_loss = val_loss
-            model.save(os.path.join(BASE_PATH, 'mini_xception_adv_best.h5'))
-            print(f" Modelo salvo no epoch {epoch+1} com val_loss {val_loss:.4f}")
-
+            torch.save(model.state_dict(), os.path.join(BASE_PATH, "mini_xception_adv_best.pth"))
+            print(f"Modelo salvo no epoch {epoch+1} com val_loss {val_loss:.4f}")
 
     print("\nAvaliando no conjunto limpo:")
-    clean_preds = classifier.predict(x_val)
-    clean_acc = np.mean(np.argmax(clean_preds, axis=1) == np.argmax(y_val, axis=1))
-    print(f"Acurácia limpa: {clean_acc * 100:.2f}%")
+    preds_clean = classifier.predict(x_val[:, np.newaxis, :, :])
+    clean_acc = np.mean(np.argmax(preds_clean, axis=1) == y_val)
+    print(f"Acurácia limpa: {clean_acc*100:.2f}%")
 
     print("\nAvaliando com PGD adversarial:")
-    x_val_adv = attack.generate(x_val, y_val)
-    adv_preds = classifier.predict(x_val_adv)
-    adv_acc = np.mean(np.argmax(adv_preds, axis=1) == np.argmax(y_val, axis=1))
-    print(f"Acurácia adversarial: {adv_acc * 100:.2f}%")
+    x_val_adv = attack.generate(x_val[:, np.newaxis, :, :], y_val)
+    preds_adv = classifier.predict(x_val_adv)
+    adv_acc = np.mean(np.argmax(preds_adv, axis=1) == y_val)
+    print(f"Acurácia adversarial: {adv_acc*100:.2f}%")
 
-    model.save(os.path.join(BASE_PATH, 'mini_xception_adv_final.h5'))
-    print(f"\nModelo salvo em: {BASE_PATH}")
+    torch.save(model.state_dict(), os.path.join(BASE_PATH, "mini_xception_adv_final.pth"))
+    print(f"Modelo salvo em {BASE_PATH}")
 
 if __name__ == "__main__":
     main()
