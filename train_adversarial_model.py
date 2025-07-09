@@ -2,7 +2,8 @@ import os
 import numpy as np
 import torch
 import torch.nn as nn
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import DataLoader, Dataset, WeightedRandomSampler
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torchvision import transforms
 import cv2
 from sklearn.model_selection import train_test_split
@@ -10,7 +11,7 @@ from art.attacks.evasion import ProjectedGradientDescent
 from art.estimators.classification import PyTorchClassifier
 from model import MiniXception 
 
-BATCH_SIZE = 32
+BATCH_SIZE = 64
 NUM_EPOCHS = 100
 NUM_CLASSES = 7
 INPUT_SHAPE = (1, 64, 64)
@@ -65,16 +66,27 @@ class FERDataset(Dataset):
         return len(self.images)
 
 def main():
+    train_transform = transforms.Compose([
+        transforms.RandomHorizontalFlip(),
+        transforms.RandomRotation(10),  
+        transforms.RandomAffine(degrees=0, translate=(0.1, 0.1)), 
+        transforms.Normalize(mean=[0.0], std=[1.0])  
+    ])
+
+    val_transform = transforms.Normalize(mean=[0.0], std=[1.0])
+    
     x_train, x_val, y_train, y_val = load_fer2013(FER_PATH)
 
-    train_dataset = FERDataset(x_train, y_train)
-    val_dataset = FERDataset(x_val, y_val)
+    train_dataset = FERDataset(x_train, y_train, transform=train_transform)
+    val_dataset = FERDataset(x_val, y_val, transform=val_transform)
 
-    train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True)
+    train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE)
     val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE)
 
     model = MiniXception(num_classes=NUM_CLASSES).to(DEVICE)
-    optimizer = torch.optim.Adam(model.parameters(), lr=1e-3, weight_decay=1e-2)
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-3, weight_decay=5e-4)
+    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=5)
+
     loss_fn = nn.CrossEntropyLoss()
 
     classifier = PyTorchClassifier(
@@ -89,9 +101,7 @@ def main():
 
     attack = ProjectedGradientDescent(
         estimator=classifier,
-        eps=0.03,
-        eps_step=0.005,
-        max_iter=40
+        eps=0.003,
     )
 
     best_val_loss = float('inf')
@@ -133,6 +143,8 @@ def main():
         val_acc = val_correct / len(val_dataset)
 
         print(f"[Epoch {epoch+1}] Train Loss: {train_loss:.4f}, Acc: {train_acc:.4f} | Val Loss: {val_loss:.4f}, Acc: {val_acc:.4f}")
+
+        scheduler.step(val_loss)
 
         if val_loss < best_val_loss:
             best_val_loss = val_loss
