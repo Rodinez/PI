@@ -5,7 +5,7 @@ import numpy as np
 from model import MiniXception
 
 IMAGE_ROOT_DIR = "Datasets/FER-2013/test/"
-MODEL_PATH = "./trained_models/mini_xception_adv_best.pth"
+MODEL_PATH = "./trained_models/mini_xception_adv_final.pth"
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 emotion_labels_model = ["angry", "disgust", "fear", "happy", "sad", "surprise", "neutral"]
