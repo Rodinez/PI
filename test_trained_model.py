@@ -1,14 +1,15 @@
 import os
 import cv2
+import torch
 import numpy as np
-import tensorflow as tf
+from model import MiniXception
 
-IMAGE_ROOT_DIR = "attacked_datasets/foolbox_PGD_10.0/FER/"
-MINI_XCEPTION_PATH = "_mini_XCEPTION.102-0.66.hdf5"
+IMAGE_ROOT_DIR = "Datasets/FER-2013/test/"
+MODEL_PATH = "./trained_models/mini_xception_adv_best.pth"
+DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 emotion_labels_model = ["angry", "disgust", "fear", "happy", "sad", "surprise", "neutral"]
-
-mini_xception_model = tf.keras.models.load_model(MINI_XCEPTION_PATH, compile=False)
+label_to_index = {label: i for i, label in enumerate(emotion_labels_model)}
 
 def preprocess_input(x, v2=True):
     x = x.astype('float32') / 255.0
@@ -19,18 +20,22 @@ def preprocess_input(x, v2=True):
 def preprocess(image):
     if len(image.shape) == 3:
         image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-
     resized = cv2.resize(image, (64, 64))
-    img_pixels = preprocess_input(resized)
-    img_pixels = np.expand_dims(img_pixels, axis=0)
-    img_pixels = np.expand_dims(img_pixels, axis=-1)
-    return img_pixels
+    img = preprocess_input(resized)
+    img = torch.tensor(img).unsqueeze(0).unsqueeze(0) 
+    return img.to(DEVICE)
 
-def predict(input_img):
-    preds = mini_xception_model.predict(input_img, verbose=0)
-    sorted_indices = np.argsort(preds[0])[::-1]
-    top2 = [emotion_labels_model[i] for i in sorted_indices[:2]]
-    return top2[0], top2
+model = MiniXception(num_classes=7).to(DEVICE)
+model.load_state_dict(torch.load(MODEL_PATH, map_location=DEVICE))
+model.eval()
+
+def predict(input_tensor):
+    with torch.no_grad():
+        output = model(input_tensor)
+        probs = torch.softmax(output, dim=1).cpu().numpy()[0]
+        sorted_indices = np.argsort(probs)[::-1]
+        top2 = [emotion_labels_model[i] for i in sorted_indices[:2]]
+        return top2[0], top2
 
 def count_total_images(root_dir):
     count = 0
@@ -44,8 +49,8 @@ def count_total_images(root_dir):
     return count
 
 def main():
-    correct_xcp = 0
-    second_xcp = 0
+    correct = 0
+    top2_correct = 0
     total = 0
 
     total_expected = count_total_images(IMAGE_ROOT_DIR)
@@ -65,13 +70,13 @@ def main():
             if image is None:
                 continue
 
-            xcp_input = preprocess(image)
-            xcp_pred, xcp_top2 = predict(xcp_input)
+            input_tensor = preprocess(image)
+            pred, top2 = predict(input_tensor)
 
-            if xcp_pred.lower() == true_label.lower():
-                correct_xcp += 1
-            elif true_label.lower() in [e.lower() for e in xcp_top2[1:]]:
-                second_xcp += 1
+            if pred.lower() == true_label.lower():
+                correct += 1
+            elif true_label.lower() in [e.lower() for e in top2[1:]]:
+                top2_correct += 1
 
             total += 1
             if total % 100 == 0:
@@ -85,9 +90,9 @@ def main():
     print("Resultados finais:")
     print("=" * 50)
     print(f"Total de imagens processadas:         {total}")
-    print(f"Acurácia mini_XCEPTION (top-1):       {correct_xcp / total * 100:.2f}%")
-    print(f"Top-2 correta no mini_XCEPTION:       {second_xcp / total * 100:.2f}%")
-    print(f"Acurácia Top(1-2) mini_XCEPTION:      {(correct_xcp + second_xcp) / total * 100:.2f}%")
+    print(f"Acurácia mini_XCEPTION (top-1):       {correct / total * 100:.2f}%")
+    print(f"Top-2 correta no mini_XCEPTION:       {top2_correct / total * 100:.2f}%")
+    print(f"Acurácia Top(1-2) mini_XCEPTION:      {(correct + top2_correct) / total * 100:.2f}%")
 
 if __name__ == "__main__":
     main()
