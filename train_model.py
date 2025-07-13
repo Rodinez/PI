@@ -7,14 +7,12 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torchvision import transforms
 import cv2
 from sklearn.model_selection import train_test_split
-from art.attacks.evasion import ProjectedGradientDescent
-from art.estimators.classification import PyTorchClassifier
 from model import MiniXception 
 
 BATCH_SIZE = 64
 NUM_EPOCHS = 100
 NUM_CLASSES = 7
-INPUT_SHAPE = (1, 64, 64)
+INPUT_SHAPE = (1, 48, 48)
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 BASE_PATH = './trained_models/'
 FER_PATH = 'Datasets/FER-2013/train'
@@ -39,7 +37,7 @@ def load_fer2013(base_path):
             img = cv2.imread(img_path, cv2.IMREAD_GRAYSCALE)
             if img is None:
                 continue
-            img = cv2.resize(img, (64, 64))
+            img = cv2.resize(img, (48, 48))
             img = preprocess_input(img)
             images.append(img)
             labels.append(label_to_index[emotion])
@@ -67,11 +65,11 @@ class FERDataset(Dataset):
 
 def main():
     train_transform = transforms.Compose([
-        transforms.RandomHorizontalFlip(),
-        transforms.RandomRotation(10),  
-        transforms.RandomAffine(degrees=0, translate=(0.1, 0.1)), 
-        transforms.Normalize(mean=[0.0], std=[1.0])  
-    ])
+    transforms.RandomRotation(10),
+    transforms.RandomAffine(degrees=0, translate=(0.1, 0.1), scale=(0.9, 1.1)),
+    transforms.RandomHorizontalFlip(),
+    transforms.Normalize(mean=[0.0], std=[1.0]),  
+])
 
     val_transform = transforms.Normalize(mean=[0.0], std=[1.0])
     

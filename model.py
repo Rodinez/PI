@@ -1,5 +1,5 @@
 '''
-Based on https://github.com/qingOOyuan/mini_Xception/blob/main/utils/Model.py
+Based on https://github.com/qingOOyuan/mini_Xception/blob/main/utils/Model.py and https://github.com/otaha178/Emotion-recognition/blob/master/models/cnn.py
 '''
 import torch.nn as nn
 

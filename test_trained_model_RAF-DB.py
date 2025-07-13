@@ -2,14 +2,24 @@ import os
 import cv2
 import torch
 import numpy as np
+import pandas as pd
 from model import MiniXception
 
-IMAGE_ROOT_DIR = "Datasets/FER-2013/test/"
-MODEL_PATH = "./trained_models/mini_xception_adv_final.pth"
+IMAGE_ROOT_DIR = "Datasets/RAF-DB/DATASET/test"
+LABEL_CSV = "Datasets/RAF-DB/test_labels.csv"
+MODEL_PATH = "./trained_models/mini_xception_final.pth"
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 emotion_labels_model = ["angry", "disgust", "fear", "happy", "sad", "surprise", "neutral"]
-label_to_index = {label: i for i, label in enumerate(emotion_labels_model)}
+rafdb_id_to_label = {
+    1: "surprise",
+    2: "fear",
+    3: "disgust",
+    4: "happy",
+    5: "sad",
+    6: "angry",
+    7: "neutral"
+}
 
 def preprocess_input(x, v2=True):
     x = x.astype('float32') / 255.0
@@ -20,9 +30,9 @@ def preprocess_input(x, v2=True):
 def preprocess(image):
     if len(image.shape) == 3:
         image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    resized = cv2.resize(image, (64, 64))
+    resized = cv2.resize(image, (48, 48))  
     img = preprocess_input(resized)
-    img = torch.tensor(img).unsqueeze(0).unsqueeze(0) 
+    img = torch.tensor(img).unsqueeze(0).unsqueeze(0)
     return img.to(DEVICE)
 
 model = MiniXception(num_classes=7).to(DEVICE)
@@ -37,50 +47,46 @@ def predict(input_tensor):
         top2 = [emotion_labels_model[i] for i in sorted_indices[:2]]
         return top2[0], top2
 
-def count_total_images(root_dir):
-    count = 0
-    for label_name in os.listdir(root_dir):
-        folder_path = os.path.join(root_dir, label_name)
-        if not os.path.isdir(folder_path):
-            continue
-        for filename in os.listdir(folder_path):
-            if filename.lower().endswith(('.jpg', '.png', '.jpeg')):
-                count += 1
-    return count
-
 def main():
+    labels_df = pd.read_csv(LABEL_CSV)
+    labels_dict = dict(zip(labels_df["image"], labels_df["label"]))
+
     correct = 0
     top2_correct = 0
     total = 0
 
-    total_expected = count_total_images(IMAGE_ROOT_DIR)
-    print(f"Total de imagens encontradas: {total_expected}")
-
-    for true_label in os.listdir(IMAGE_ROOT_DIR):
-        folder_path = os.path.join(IMAGE_ROOT_DIR, true_label)
+    image_paths = []
+    for subfolder in map(str, range(1, 8)):
+        folder_path = os.path.join(IMAGE_ROOT_DIR, subfolder)
         if not os.path.isdir(folder_path):
             continue
-
         for filename in os.listdir(folder_path):
-            if not filename.lower().endswith(('.jpg', '.png', '.jpeg')):
-                continue
+            if filename.lower().endswith(('.jpg', '.png', '.jpeg')):
+                image_paths.append((os.path.join(folder_path, filename), filename))
 
-            image_path = os.path.join(folder_path, filename)
-            image = cv2.imread(image_path)
-            if image is None:
-                continue
+    print(f"Processando {len(image_paths)} imagens...")
 
-            input_tensor = preprocess(image)
-            pred, top2 = predict(input_tensor)
+    for image_path, filename in image_paths:
+        image = cv2.imread(image_path)
+        if image is None:
+            continue
 
-            if pred.lower() == true_label.lower():
-                correct += 1
-            elif true_label.lower() in [e.lower() for e in top2[1:]]:
-                top2_correct += 1
+        label_id = labels_dict.get(filename)
+        true_label = rafdb_id_to_label.get(label_id)
+        if true_label is None:
+            continue
 
-            total += 1
-            if total % 100 == 0:
-                print(f"Processadas: {total}/{total_expected} imagens")
+        input_tensor = preprocess(image)
+        pred, top2 = predict(input_tensor)
+
+        if pred.lower() == true_label.lower():
+            correct += 1
+        elif true_label.lower() in [e.lower() for e in top2[1:]]:
+            top2_correct += 1
+
+        total += 1
+        if total % 100 == 0:
+            print(f"Processadas: {total}/{len(image_paths)} imagens")
 
     if total == 0:
         print("Nenhuma imagem foi processada com sucesso.")
