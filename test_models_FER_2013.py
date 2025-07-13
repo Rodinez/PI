@@ -3,7 +3,7 @@ import cv2
 import numpy as np
 import tensorflow as tf
 
-IMAGE_ROOT_DIR = "attacked_datasets/foolbox_PGD_10.0/FER/"
+IMAGE_ROOT_DIR = "attacked_datasets/art_PGD_10.0/FER/"
 MINI_XCEPTION_PATH = "_mini_XCEPTION.102-0.66.hdf5"
 
 emotion_labels_model = ["angry", "disgust", "fear", "happy", "sad", "surprise", "neutral"]
