@@ -4,7 +4,7 @@ import torch
 import numpy as np
 from model import MiniXception
 
-IMAGE_ROOT_DIR = "attacked_datasets/foolbox_PGD_10.0/FER"
+IMAGE_ROOT_DIR = "attacked_datasets/self_model/foolbox_PGD_10.0/FER"
 MODEL_PATH = "trained_models/mini_xception_final.pth"
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
