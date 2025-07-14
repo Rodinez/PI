@@ -5,9 +5,9 @@ import numpy as np
 import pandas as pd
 from model import MiniXception
 
-IMAGE_ROOT_DIR = "attacked_datasets/self_model/foolbox_PGD_5.0/RAF"
+IMAGE_ROOT_DIR = "attacked_datasets/self_model/foolbox_PGD_10.0/RAF"
 LABEL_CSV = "Datasets/RAF-DB/test_labels.csv"
-MODEL_PATH = "trained_models/mini_xception_final.pth"
+MODEL_PATH = "trained_models/mini_XCEPTION_adv_e19_acc0.52.pth"
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
