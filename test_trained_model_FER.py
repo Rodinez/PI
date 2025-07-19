@@ -4,8 +4,8 @@ import torch
 import numpy as np
 from model import MiniXception
 
-IMAGE_ROOT_DIR = "attacked_datasets/self_model/foolbox_FGSM_10.0/FER"
-MODEL_PATH = "trained_models/mini_XCEPTION_adv_e19_acc0.52.pth"
+IMAGE_ROOT_DIR = "attacked_datasets/self_model/foolbox_PGD_25.0/FER"
+MODEL_PATH = "trained_models/mini_xception_final.pth"
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 emotion_labels_model = ["angry", "disgust", "fear", "happy", "sad", "surprise", "neutral"]
