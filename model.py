@@ -1,8 +1,7 @@
 '''
-Based on https://github.com/qingOOyuan/mini_Xception/blob/main/utils/Model.py
+Based on https://github.com/qingOOyuan/mini_Xception/blob/main/utils/Model.py and https://github.com/otaha178/Emotion-recognition/blob/master/models/cnn.py
 '''
 import torch.nn as nn
-import torch.nn.functional as F
 
 class SeparableConv2d(nn.Module):
     def __init__(self, in_channels, out_channels, kernel_size=3, padding=1, bias=False, weight_decay=0.01):
