@@ -5,7 +5,7 @@ Foram usados os conjuntos de dados FER-2013 e RAF-DB e testados ataques FGSM, PG
 - Gabriel Santos de Andrade - RA: 815407
 - Leonardo Prado Silva - RA: 813169
 
-## 📂 Estrutura do Projeto
+## Estrutura do Projeto
 
 ```
 .
